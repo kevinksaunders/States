@@ -255,6 +255,105 @@
     100% { background: #1f2937; border-color: #374151; color: #374151; transform: scale(0.95); opacity: 0.45; }
   }
 
+  #micBtn {
+    background: var(--panel);
+    border: 2px solid var(--muted);
+    border-radius: 10px;
+    color: var(--muted);
+    font-size: 1.4rem;
+    padding: 0 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #micBtn.listening {
+    border-color: var(--accent);
+    color: var(--accent);
+    animation: pulse 1s infinite;
+  }
+
+  #micBtn.unsupported {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(233,69,96,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(233,69,96,0); }
+  }
+
+  /* Startup modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 24px;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-box {
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 28px 24px;
+    text-align: center;
+    max-width: 340px;
+    width: 100%;
+  }
+  .modal-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.8rem;
+    letter-spacing: 3px;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+  .modal-sub {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+  .modal-saved-info {
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+    color: var(--text);
+  }
+  .modal-saved-info span {
+    color: var(--green);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.2rem;
+  }
+  .modal-btn {
+    display: block;
+    width: 100%;
+    padding: 13px;
+    border-radius: 10px;
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: none;
+    margin-bottom: 10px;
+    transition: opacity 0.2s;
+  }
+  .modal-btn:active { opacity: 0.8; }
+  .modal-btn.primary { background: var(--green); color: white; }
+  .modal-btn.secondary {
+    background: transparent;
+    border: 2px solid var(--muted);
+    color: var(--muted);
+  }
+
   #resetBtn {
     display: block;
     width: 100%;
@@ -280,6 +379,17 @@
 </head>
 <body>
 
+<!-- Startup Modal -->
+<div class="modal-overlay" id="startModal">
+  <div class="modal-box">
+    <div class="modal-title">🚗 Plate Spotter</div>
+    <div class="modal-sub" id="modalSub"></div>
+    <div class="modal-saved-info" id="modalInfo"></div>
+    <button class="modal-btn primary" id="continueBtn">▶ Continue Game</button>
+    <button class="modal-btn secondary" id="freshBtn">↺ Start Fresh</button>
+  </div>
+</div>
+
 <h1>🚗 Plate Spotter</h1>
 <p class="subtitle">License Plate Road Trip Game</p>
 
@@ -297,10 +407,11 @@
 <div class="voice-section">
   <div class="voice-label">Say a command</div>
   <div class="input-row">
-    <input type="text" id="cmdInput" placeholder='e.g. "Remove Texas"' autocomplete="off" autocorrect="off" spellcheck="false" />
+    <input type="text" id="cmdInput" placeholder='e.g. "Texas"' autocomplete="off" autocorrect="off" spellcheck="false" />
+    <button id="micBtn" title="Tap to speak">🎤</button>
     <button id="goBtn">GO</button>
   </div>
-  <div class="hint">Tap the field → tap the <span>🎤 mic</span> on your keyboard → speak → tap <span>GO</span></div>
+  <div class="hint" id="micHint">Tap 🎤 to speak a state name, or type and tap GO</div>
 </div>
 
 <div id="responseBubble"></div>
@@ -322,6 +433,16 @@
 <button id="resetBtn">↺ Reset Game</button>
 
 <script>
+// ── Save/Load ──────────────────────────────────────────
+const SAVE_KEY = 'plateSpotterSave';
+function saveGame() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify([...found])); } catch(e) {}
+}
+function loadSave() {
+  try { const d = localStorage.getItem(SAVE_KEY); return d ? JSON.parse(d) : null; } catch(e) { return null; }
+}
+function clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch(e) {} }
+
 const ALL_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut",
   "Delaware","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa",
@@ -385,6 +506,7 @@ function markFound(state, flash = false) {
   found.add(state);
   updatePlate(state, flash);
   updateStats();
+  saveGame();
   return true;
 }
 
@@ -437,6 +559,7 @@ function processCommand(text) {
   // Reset
   if (norm.includes('reset') || norm.includes('start over') || norm.includes('new game')) {
     found.clear();
+    clearSave();
     buildGrid();
     updateStats();
     const msg = "Game reset! All 50 states back on the list.";
@@ -500,6 +623,7 @@ function buildGrid() {
         found.delete(state);
         updatePlate(state);
         updateStats();
+        saveGame();
         showResponse(`${state} restored.`, '');
       } else {
         markFound(state, true);
@@ -516,6 +640,7 @@ function buildGrid() {
 // Input handling
 const cmdInput = document.getElementById('cmdInput');
 const goBtn = document.getElementById('goBtn');
+const micBtn = document.getElementById('micBtn');
 
 function submitCommand() {
   const val = cmdInput.value.trim();
@@ -530,13 +655,96 @@ cmdInput.addEventListener('keydown', e => {
   if (e.key === 'Enter') submitCommand();
 });
 
+// ── Web Speech API mic button ──────────────────────────
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let listening = false;
 
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.continuous = false;
+  recognition.interimResults = false;
 
+  recognition.onstart = () => {
+    listening = true;
+    micBtn.classList.add('listening');
+    micBtn.textContent = '🔴';
+    showResponse('Listening…', '');
+  };
+
+  recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    cmdInput.value = transcript;
+    processCommand(transcript);
+    cmdInput.value = '';
+  };
+
+  recognition.onerror = (e) => {
+    let msg = 'Mic error.';
+    if (e.error === 'not-allowed') msg = 'Mic permission denied. Allow microphone access in Chrome settings.';
+    else if (e.error === 'no-speech') msg = 'No speech detected. Try again.';
+    showResponse(msg, 'error');
+  };
+
+  recognition.onend = () => {
+    listening = false;
+    micBtn.classList.remove('listening');
+    micBtn.textContent = '🎤';
+  };
+
+  micBtn.addEventListener('click', () => {
+    if (listening) {
+      recognition.stop();
+    } else {
+      try { recognition.start(); }
+      catch(e) { showResponse('Could not start mic. Try again.', 'error'); }
+    }
+  });
+} else {
+  micBtn.classList.add('unsupported');
+  micBtn.title = 'Speech recognition not supported in this browser';
+  document.getElementById('micHint').innerHTML = 'Type a state name and tap <span style="color:var(--gold)">GO</span>';
+}
+
+// ── Reset button ───────────────────────────────────────
 document.getElementById('resetBtn').addEventListener('click', () => {
   found.clear();
+  clearSave();
   buildGrid();
   updateStats();
   showResponse('Game reset! All 50 states back on the list.', 'success');
+});
+
+// ── Startup modal ──────────────────────────────────────
+const startModal = document.getElementById('startModal');
+const savedStates = loadSave();
+
+if (savedStates && savedStates.length > 0) {
+  const remCount = 50 - savedStates.length;
+  document.getElementById('modalSub').textContent = 'A saved game was found!';
+  document.getElementById('modalInfo').innerHTML =
+    `<span>${savedStates.length}</span> states found &nbsp;·&nbsp; <span>${remCount}</span> remaining`;
+
+  document.getElementById('continueBtn').addEventListener('click', () => {
+    found = new Set(savedStates);
+    buildGrid();
+    updateStats();
+    startModal.classList.add('hidden');
+    showResponse(`Welcome back! ${remCount} state${remCount !== 1 ? 's' : ''} to go.`, 'success');
+  });
+} else {
+  document.getElementById('modalSub').textContent = 'Ready to hit the road?';
+  document.getElementById('modalInfo').style.display = 'none';
+  document.getElementById('continueBtn').style.display = 'none';
+}
+
+document.getElementById('freshBtn').addEventListener('click', () => {
+  found = new Set();
+  clearSave();
+  buildGrid();
+  updateStats();
+  startModal.classList.add('hidden');
 });
 
 buildGrid();
